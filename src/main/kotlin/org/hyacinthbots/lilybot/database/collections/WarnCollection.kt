@@ -2,6 +2,7 @@ package org.hyacinthbots.lilybot.database.collections
 
 import com.kotlindiscord.kord.extensions.koin.KordExKoinComponent
 import dev.kord.common.entity.Snowflake
+import kotlinx.datetime.Clock
 import org.hyacinthbots.lilybot.database.Database
 import org.hyacinthbots.lilybot.database.entities.WarnData
 import org.koin.core.component.inject
@@ -12,7 +13,7 @@ import org.litote.kmongo.eq
  * functions for querying, adding and removal of warnings for a user.
  *
  * @since 4.0.0
- * @see getWarn
+ * @see getWarns
  * @see setWarn
  * @see clearWarns
  */
@@ -23,43 +24,36 @@ class WarnCollection : KordExKoinComponent {
 	internal val collection = db.mainDatabase.getCollection<WarnData>()
 
 	/**
-	 * Gets the number of points the provided [inputUserId] has in the provided [inputGuildId] from the database.
+	 * Gets a list of warnings for a provided [inputUserId] in the provided [inputGuildId] from the database.
 	 *
-	 * @param inputUserId The ID of the user to get the point value for
+	 * @param inputUserId The ID of the user to get warnings for
 	 * @param inputGuildId The ID of the guild the command was run in
 	 * @return null or the result from the database
 	 * @author tempest15
 	 * @since 3.0.0
 	 */
-	suspend inline fun getWarn(inputUserId: Snowflake, inputGuildId: Snowflake): WarnData? =
-		collection.findOne(
+	suspend inline fun getWarns(inputUserId: Snowflake, inputGuildId: Snowflake): List<WarnData> =
+		collection.find(
 			WarnData::userId eq inputUserId,
 			WarnData::guildId eq inputGuildId
-		)
+		).toList()
 
-	/**
-	 * Updates the number of points the provided [inputUserId] has in the provided [inputGuildId] in the database.
-	 *
-	 * @param inputUserId The ID of the user to get the point value for.
-	 * @param inputGuildId The ID of the guild the command was run in.
-	 * @param remove Remove a warn strike, or add a warn strike.
-	 * @author tempest15
-	 * @since 3.0.0
-	 */
-	suspend inline fun setWarn(inputUserId: Snowflake, inputGuildId: Snowflake, remove: Boolean) {
-		val currentStrikes = getWarn(inputUserId, inputGuildId)?.strikes ?: 0
-		collection.deleteOne(WarnData::userId eq inputUserId, WarnData::guildId eq inputGuildId)
+	suspend fun setWarn(inputUserId: Snowflake, inputGuildId: Snowflake, reason: String?) =
 		collection.insertOne(
 			WarnData(
+				(getWarns(inputUserId, inputGuildId).maxByOrNull { it.id }?.id ?: 0) + 1,
 				inputUserId,
 				inputGuildId,
-				if (!remove) currentStrikes.plus(1) else currentStrikes.minus(1)
+				reason,
+				Clock.System.now()
 			)
 		)
-	}
+
+	suspend fun removeWarn(inputUserId: Snowflake, inputGuildId: Snowflake, id: Long) =
+		collection.deleteOne(WarnData::userId eq inputUserId, WarnData::guildId eq inputGuildId, WarnData::id eq id)
 
 	/**
-	 * Clears all warn strikes for the provided [inputGuildId].
+	 * Clears all warnings for the provided [inputGuildId].
 	 *
 	 * @param inputGuildId The ID of the guild the command was run in
 	 * @author tempest15

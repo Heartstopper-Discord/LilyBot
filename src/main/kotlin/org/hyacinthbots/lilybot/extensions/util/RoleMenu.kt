@@ -249,11 +249,11 @@ class RoleMenu : Extension() {
 				name = "remove"
 				description = "Remove a role from the existing role menu in this channel."
 
-				requirePermission(Permission.ManageMessages)
+				requirePermission(Permission.ManageRoles)
 
 				check {
 					anyGuild()
-					hasPermission(Permission.ManageMessages)
+					hasPermission(Permission.ManageRoles)
 					requireBotPermissions(Permission.SendMessages, Permission.ManageRoles)
 					botHasChannelPerms(
 						Permissions(Permission.SendMessages, Permission.EmbedLinks)
@@ -315,11 +315,11 @@ class RoleMenu : Extension() {
 				name = "pronouns"
 				description = "Create a pronoun selection role menu and the roles to go with it."
 
-				requirePermission(Permission.ManageMessages)
+				requirePermission(Permission.ManageRoles)
 
 				check {
 					anyGuild()
-					hasPermission(Permission.ManageMessages)
+					hasPermission(Permission.ManageRoles)
 					requireBotPermissions(Permission.SendMessages, Permission.ManageRoles)
 					botHasChannelPerms(
 						Permissions(Permission.SendMessages, Permission.EmbedLinks)

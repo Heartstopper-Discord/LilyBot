@@ -9,6 +9,8 @@ import com.kotlindiscord.kord.extensions.checks.hasPermission
 import com.kotlindiscord.kord.extensions.checks.hasPermissions
 import com.kotlindiscord.kord.extensions.checks.types.CheckContextWithCache
 import com.kotlindiscord.kord.extensions.commands.Arguments
+import com.kotlindiscord.kord.extensions.commands.application.slash.ephemeralSubCommand
+import com.kotlindiscord.kord.extensions.commands.application.slash.publicSubCommand
 import com.kotlindiscord.kord.extensions.commands.converters.impl.coalescingOptionalDuration
 import com.kotlindiscord.kord.extensions.commands.converters.impl.defaultingBoolean
 import com.kotlindiscord.kord.extensions.commands.converters.impl.defaultingString
@@ -61,6 +63,7 @@ import org.hyacinthbots.discordmoderationactions.builder.timeout
 import org.hyacinthbots.discordmoderationactions.builder.unban
 import org.hyacinthbots.discordmoderationactions.enums.ActionResults
 import org.hyacinthbots.lilybot.database.collections.ModerationConfigCollection
+import org.hyacinthbots.lilybot.database.collections.TimeoutCollection
 import org.hyacinthbots.lilybot.database.collections.WarnCollection
 import org.hyacinthbots.lilybot.extensions.config.ConfigOptions
 import org.hyacinthbots.lilybot.utils.HYACINTH_GITHUB
@@ -332,11 +335,15 @@ class ModerationCommands : Extension() {
 											return@SelectMenu
 										}
 
+										val whenTimedOut = Clock.System.now()
+										val duration = whenTimedOut.plus(timeoutTime, TimeZone.UTC)
+										TimeoutCollection().setTimeout(senderId, guild!!.id, null, whenTimedOut, duration)
+
 										val dm = sender.dm {
 											embed {
 												title = "You have been timed-out in ${guild?.asGuildOrNull()?.name}"
 												description =
-													"Quick timed out for ${timeoutTime.interval()} $reasonSuffix."
+													"Quick timed out for $timeoutTime $reasonSuffix."
 											}
 										}
 
@@ -388,8 +395,8 @@ class ModerationCommands : Extension() {
 									}
 
 									ModerationActions.WARN.name -> {
-										WarnCollection().setWarn(senderId, guild!!.id, false)
-										val strikes = WarnCollection().getWarn(senderId, guild!!.id)?.strikes
+										WarnCollection().setWarn(senderId, guild!!.id, null)
+										val strikes = WarnCollection().getWarns(senderId, guild!!.id).count()
 
 										val dm = sender.dm {
 											embed {
@@ -399,7 +406,7 @@ class ModerationCommands : Extension() {
 											}
 										}
 
-										if (modConfig?.autoPunishOnWarn == true && strikes!! > 1) {
+										if (modConfig?.autoPunishOnWarn == true && strikes > 1) {
 											val duration = when (strikes) {
 												2 -> "PT3H"
 												3 -> "PT12H"
@@ -426,11 +433,12 @@ class ModerationCommands : Extension() {
 													name = "Total strikes"
 													value = strikes.toString()
 												}
+												color = DISCORD_RED
 											}
 											if (modConfig?.autoPunishOnWarn == true && strikes != 1) {
 												embed {
 													warnTimeoutLog(
-														strikes!!,
+														strikes,
 														event.interaction.user.asUserOrNull(),
 														sender.asUserOrNull(),
 														"Quick warned via moderate menu $reasonSuffix"
@@ -723,10 +731,10 @@ class ModerationCommands : Extension() {
 			name = "clear"
 			description = "Clears messages from a channel."
 
-			requirePermission(Permission.ManageMessages)
+			requirePermission(Permission.ManageChannels)
 
 			check {
-				modCommandChecks(Permission.ManageMessages)
+				modCommandChecks(Permission.ManageChannels)
 				requireBotPermissions(Permission.ManageMessages)
 				botHasChannelPerms(Permissions(Permission.ManageMessages))
 			}
@@ -774,9 +782,186 @@ class ModerationCommands : Extension() {
 			}
 		}
 
-		ephemeralSlashCommand(::TimeoutArgs) {
+		ephemeralSlashCommand {
 			name = "timeout"
-			description = "Times out a user."
+			description = "The parent command for all timeout commands"
+
+			requirePermission(Permission.ModerateMembers)
+			check {
+				modCommandChecks(Permission.ModerateMembers)
+				requireBotPermissions(Permission.ModerateMembers)
+			}
+
+			ephemeralSubCommand(::TimeoutArgs) {
+				name = "user"
+				description = "Times out a user."
+
+				requirePermission(Permission.ModerateMembers)
+
+				check {
+					modCommandChecks(Permission.ModerateMembers)
+					requireBotPermissions(Permission.ModerateMembers)
+				}
+
+				action {
+					val modConfig = ModerationConfigCollection().getConfig(guild!!.id)
+					val durationArg = arguments.duration ?: modConfig?.quickTimeoutLength ?: DateTimePeriod(hours = 6)
+					val whenTimedOut = Clock.System.now()
+					val duration = whenTimedOut.plus(durationArg, TimeZone.UTC)
+					isBotOrModerator(event.kord, arguments.userArgument, guild, "timeout") ?: return@action
+
+					val action = timeout(arguments.userArgument) {
+						reason = arguments.reason
+						logPublicly = ModerationConfigCollection().getConfig(guild!!.id)?.publicLogging
+						timeoutDuration = duration
+						sendDm = arguments.dm
+						loggingChannel = getLoggingChannelWithPerms(ConfigOptions.ACTION_LOG, guild!!)
+						actionEmbed {
+							embed {
+								title = "Timeout"
+								image = arguments.image?.url
+								baseModerationEmbed(arguments.reason, arguments.userArgument, user)
+								dmNotificationStatusEmbedField(dmResult)
+								timestamp = whenTimedOut
+								field {
+									name = "Duration:"
+									value = duration.toDiscord(TimestampType.Default) + " (${durationArg.interval()})"
+									inline = false
+								}
+							}
+						}
+						publicActionEmbed {
+							embed {
+								title = "Timeout"
+								description = "${arguments.userArgument.mention} was timed out by a moderator"
+								color = DISCORD_BLACK
+								field {
+									name = "Duration:"
+									value = duration.toDiscord(TimestampType.Default) + " (${durationArg.interval()})"
+									inline = false
+								}
+							}
+						}
+						dmEmbed {
+							title = "You have been timed out in ${guild?.fetchGuild()?.name}"
+							description = "**Duration:**\n${
+								duration.toDiscord(TimestampType.Default) + " (${durationArg.interval()})"
+							}\n**Reason:**\n${arguments.reason}"
+						}
+					}
+
+					if (action.result == ActionResults.NULL_GUILD) {
+						respond { content = action.result.message }
+						return@action
+					}
+
+					TimeoutCollection().setTimeout(
+						arguments.userArgument.id,
+						guild!!.id,
+						arguments.reason,
+						whenTimedOut,
+						duration
+					)
+
+					respond {
+						content = "Timed-out user."
+					}
+				}
+			}
+
+			ephemeralSubCommand(::RemoveTimeoutArgs) {
+				name = "remove"
+				description = "Removes a timeout from a user"
+
+				requirePermission(Permission.ModerateMembers)
+
+				check {
+					modCommandChecks(Permission.ModerateMembers)
+					requireBotPermissions(Permission.ModerateMembers)
+				}
+
+				action {
+					val action = removeTimeout(arguments.userArgument) {
+						sendDm = arguments.dm
+						loggingChannel = getLoggingChannelWithPerms(ConfigOptions.ACTION_LOG, guild!!)
+						actionEmbed {
+							embed {
+								title = "Timeout Removed"
+								dmNotificationStatusEmbedField(dmResult)
+								field {
+									name = "User:"
+									value = "${arguments.userArgument.username} \n${arguments.userArgument.id}"
+									inline = false
+								}
+								footer {
+									text = "Requested by ${user.asUserOrNull()?.username}"
+									icon = user.asUserOrNull()?.avatar?.cdnUrl?.toUrl()
+								}
+								timestamp = Clock.System.now()
+								color = DISCORD_BLACK
+							}
+						}
+						dmEmbed {
+							title = "Timeout removed in ${guild!!.asGuildOrNull()?.name}"
+							description = "Your timeout has been manually removed in this guild."
+						}
+					}
+
+					if (action.result == ActionResults.NULL_GUILD) {
+						respond { content = action.result.message }
+						return@action
+					}
+
+					respond {
+						content = "Removed timeout from user."
+					}
+				}
+			}
+
+			publicSubCommand(::TimeoutListArgs) {
+				name = "list"
+				description = "List timeouts for a given user"
+
+				action {
+					val targetUser = guild?.getMemberOrNull(arguments.userArgument.id) ?: run {
+						respond {
+							content = "I was unable to find the member in this guild! Please try again!"
+						}
+						return@action
+					}
+					val userTimeouts = TimeoutCollection().getTimeouts(targetUser.id, guild!!.id)
+
+					if (userTimeouts.isEmpty()) {
+						respond {
+							content = "This user has no timeouts."
+						}
+						return@action
+					}
+
+					respond {
+						embed {
+							color = DISCORD_RED
+							title = "Timeouts for ${targetUser.username}"
+							userTimeouts.mapIndexed { i, iii ->
+							    field {
+								name = "Timeout ${i + 1}"
+								value = "Created at ${iii.datetime.toDiscord(TimestampType.LongDateTime)} " +
+										"(${iii.datetime.toDiscord(TimestampType.RelativeTime)})\n" +
+										"Timed out until: ${iii.duration.toDiscord(TimestampType.LongDateTime)} " +
+										"(${iii.duration.toDiscord(TimestampType.RelativeTime)})\n" +
+										"Reason: ${iii.reason}"
+							}
+							}
+						}
+					}
+					return@action
+				}
+			}
+		}
+
+		ephemeralSlashCommand {
+			name = "warn"
+			description = "The parent command for all warn commands"
 
 			requirePermission(Permission.ModerateMembers)
 
@@ -785,276 +970,225 @@ class ModerationCommands : Extension() {
 				requireBotPermissions(Permission.ModerateMembers)
 			}
 
-			action {
-				val modConfig = ModerationConfigCollection().getConfig(guild!!.id)
-				val durationArg = arguments.duration ?: modConfig?.quickTimeoutLength ?: DateTimePeriod(hours = 6)
-				val duration = Clock.System.now().plus(durationArg, TimeZone.UTC)
+			ephemeralSubCommand(::WarnArgs) {
+				name = "user"
+				description = "Warns a user."
 
-				isBotOrModerator(event.kord, arguments.userArgument, guild, "timeout") ?: return@action
+				action {
+					val config = ModerationConfigCollection().getConfig(guild!!.id)!!
+					val actionLog = getLoggingChannelWithPerms(ConfigOptions.ACTION_LOG, this.getGuild()!!) ?: return@action
+					val guildName = guild?.asGuildOrNull()?.name
 
-				val action = timeout(arguments.userArgument) {
-					reason = arguments.reason
-					logPublicly = ModerationConfigCollection().getConfig(guild!!.id)?.publicLogging
-					timeoutDuration = duration
-					sendDm = arguments.dm
-					loggingChannel = getLoggingChannelWithPerms(ConfigOptions.ACTION_LOG, guild!!)
-					actionEmbed {
+					isBotOrModerator(event.kord, arguments.userArgument, guild, "warn") ?: return@action
+
+					WarnCollection().setWarn(arguments.userArgument.id, guild!!.id, arguments.reason)
+					val strikes = WarnCollection().getWarns(arguments.userArgument.id, guild!!.id).count()
+
+					respond {
+						content = "Warned user."
+					}
+
+					var dm: Message? = null
+
+					if (arguments.dm) {
+						val warnText = if (config.autoPunishOnWarn == false) {
+							"No moderation action has been taken.\n $warnSuffix"
+						} else {
+							when (strikes) {
+								1 -> "No moderation action has been taken.\n $warnSuffix"
+								2 -> "You have been timed out for 3 hours.\n $warnSuffix"
+								3 -> "You have been timed out for 12 hours.\n $warnSuffix"
+								else -> "You have been timed out for 3 days.\n $warnSuffix"
+							}
+						}
+
+						dm = arguments.userArgument.dm {
+							embed {
+								title = "Warning $strikes in $guildName"
+								description = "**Reason:** ${arguments.reason}\n\n$warnText"
+							}
+						}
+					}
+
+					if (config.autoPunishOnWarn == true && strikes > 1) {
+						val duration = when (strikes) {
+							2 -> "PT3H"
+							3 -> "PT12H"
+							else -> "P3D"
+						}
+						guild?.getMemberOrNull(arguments.userArgument.id)?.edit {
+							timeoutUntil = Clock.System.now().plus(Duration.parse(duration))
+						}
+					}
+
+					val dmResult = getDmResult(arguments.dm, dm)
+
+					actionLog.createMessage {
 						embed {
-							title = "Timeout"
+							title = "Warning"
 							image = arguments.image?.url
 							baseModerationEmbed(arguments.reason, arguments.userArgument, user)
 							dmNotificationStatusEmbedField(dmResult)
 							timestamp = Clock.System.now()
 							field {
-								name = "Duration:"
-								value = duration.toDiscord(TimestampType.Default) + " (${durationArg.interval()})"
-								inline = false
+								name = "Total strikes"
+								value = strikes.toString()
+							}
+							color = DISCORD_RED
+						}
+						if (config.autoPunishOnWarn == true && strikes != 1) {
+							embed {
+								warnTimeoutLog(
+									strikes,
+									event.interaction.user.asUserOrNull(),
+									arguments.userArgument,
+									arguments.reason
+								)
 							}
 						}
 					}
-					publicActionEmbed {
-						embed {
-							title = "Timeout"
-							description = "${arguments.userArgument.mention} was timed out by a moderator"
-							color = DISCORD_BLACK
-							field {
-								name = "Duration:"
-								value = duration.toDiscord(TimestampType.Default) + " (${durationArg.interval()})"
-								inline = false
-							}
-						}
-					}
-					dmEmbed {
-						title = "You have been timed out in ${guild?.fetchGuild()?.name}"
-						description = "**Duration:**\n${
-							duration.toDiscord(TimestampType.Default) + " (${durationArg.interval()})"
-						}\n**Reason:**\n${arguments.reason}"
-					}
-				}
 
-				if (action.result == ActionResults.NULL_GUILD) {
-					respond { content = action.result.message }
-					return@action
-				}
-
-				respond {
-					content = "Timed-out user."
-				}
-			}
-		}
-
-		ephemeralSlashCommand(::RemoveTimeoutArgs) {
-			name = "remove-timeout"
-			description = "Removes a timeout from a user"
-
-			requirePermission(Permission.ModerateMembers)
-
-			check {
-				modCommandChecks(Permission.ModerateMembers)
-				requireBotPermissions(Permission.ModerateMembers)
-			}
-
-			action {
-				val action = removeTimeout(arguments.userArgument) {
-					sendDm = arguments.dm
-					loggingChannel = getLoggingChannelWithPerms(ConfigOptions.ACTION_LOG, guild!!)
-					actionEmbed {
-						embed {
-							title = "Timeout Removed"
-							dmNotificationStatusEmbedField(dmResult)
-							field {
-								name = "User:"
-								value = "${arguments.userArgument.username} \n${arguments.userArgument.id}"
-								inline = false
-							}
-							footer {
-								text = "Requested by ${user.asUserOrNull()?.username}"
-								icon = user.asUserOrNull()?.avatar?.cdnUrl?.toUrl()
-							}
-							timestamp = Clock.System.now()
-							color = DISCORD_BLACK
-						}
-					}
-					dmEmbed {
-						title = "Timeout removed in ${guild!!.asGuildOrNull()?.name}"
-						description = "Your timeout has been manually removed in this guild."
-					}
-				}
-
-				if (action.result == ActionResults.NULL_GUILD) {
-					respond { content = action.result.message }
-					return@action
-				}
-
-				respond {
-					content = "Removed timeout from user."
-				}
-			}
-		}
-
-		ephemeralSlashCommand(::WarnArgs) {
-			name = "warn"
-			description = "Warns a user."
-
-			requirePermission(Permission.ModerateMembers)
-
-			check {
-				modCommandChecks(Permission.ModerateMembers)
-				requireBotPermissions(Permission.ModerateMembers)
-			}
-
-			action {
-				val config = ModerationConfigCollection().getConfig(guild!!.id)!!
-				val actionLog = getLoggingChannelWithPerms(ConfigOptions.ACTION_LOG, this.getGuild()!!) ?: return@action
-				val guildName = guild?.asGuildOrNull()?.name
-
-				isBotOrModerator(event.kord, arguments.userArgument, guild, "warn") ?: return@action
-
-				WarnCollection().setWarn(arguments.userArgument.id, guild!!.id, false)
-				val strikes = WarnCollection().getWarn(arguments.userArgument.id, guild!!.id)?.strikes
-
-				respond {
-					content = "Warned user."
-				}
-
-				var dm: Message? = null
-
-				if (arguments.dm) {
-					val warnText = if (config.autoPunishOnWarn == false) {
-						"No moderation action has been taken.\n $warnSuffix"
-					} else {
-						when (strikes) {
-							1 -> "No moderation action has been taken.\n $warnSuffix"
-							2 -> "You have been timed out for 3 hours.\n $warnSuffix"
-							3 -> "You have been timed out for 12 hours.\n $warnSuffix"
-							else -> "You have been timed out for 3 days.\n $warnSuffix"
-						}
-					}
-
-					dm = arguments.userArgument.dm {
-						embed {
-							title = "Warning $strikes in $guildName"
-							description = "**Reason:** ${arguments.reason}\n\n$warnText"
+					if (config.publicLogging != null && config.publicLogging == true) {
+						channel.createEmbed {
+							title = "Warning"
+							description = "${arguments.userArgument.mention} has been warned by a moderator"
+							color = DISCORD_RED
 						}
 					}
 				}
-
-				if (config.autoPunishOnWarn == true && strikes!! > 1) {
-					val duration = when (strikes) {
-						2 -> "PT3H"
-						3 -> "PT12H"
-						else -> "P3D"
-					}
-					guild?.getMemberOrNull(arguments.userArgument.id)?.edit {
-						timeoutUntil = Clock.System.now().plus(Duration.parse(duration))
-					}
-				}
-
-				val dmResult = getDmResult(arguments.dm, dm)
-
-				actionLog.createMessage {
-					embed {
-						title = "Warning"
-						image = arguments.image?.url
-						baseModerationEmbed(arguments.reason, arguments.userArgument, user)
-						dmNotificationStatusEmbedField(dmResult)
-						timestamp = Clock.System.now()
-						field {
-							name = "Total strikes"
-							value = strikes.toString()
-						}
-						color = DISCORD_RED
-					}
-					if (config.autoPunishOnWarn == true && strikes != 1) {
-						embed {
-							warnTimeoutLog(
-								strikes!!,
-								event.interaction.user.asUserOrNull(),
-								arguments.userArgument,
-								arguments.reason
-							)
-						}
-					}
-				}
-
-				if (config.publicLogging != null && config.publicLogging == true) {
-					channel.createEmbed {
-						title = "Warning"
-						description = "${arguments.userArgument.mention} has been warned by a moderator"
-						color = DISCORD_RED
-					}
-				}
-			}
-		}
-
-		ephemeralSlashCommand(::RemoveWarnArgs) {
-			name = "remove-warn"
-			description = "Removes a user's warnings"
-
-			requirePermission(Permission.ModerateMembers)
-
-			check {
-				modCommandChecks(Permission.ModerateMembers)
-				requireBotPermissions(Permission.ModerateMembers)
 			}
 
-			action {
-				val config = ModerationConfigCollection().getConfig(guild!!.id)!!
-				val targetUser = guild?.getMemberOrNull(arguments.userArgument.id) ?: run {
+			ephemeralSubCommand(::RemoveWarnArgs) {
+				name = "remove"
+				description = "Removes a user's warning"
+
+				action {
+					val config = ModerationConfigCollection().getConfig(guild!!.id)!!
+					val targetUser = guild?.getMemberOrNull(arguments.userArgument.id) ?: run {
+						respond {
+							content = "I was unable to find the member in this guild! Please try again!"
+						}
+						return@action
+					}
+					val userWarns = WarnCollection().getWarns(targetUser.id, guild!!.id)
+
+					if (userWarns.isEmpty()) {
+						respond {
+							content = "This user has no warnings."
+						}
+						return@action
+					}
+
 					respond {
-						content = "I was unable to find the member in this guild! Please try again!"
-					}
-					return@action
-				}
+						components {
+							ephemeralSelectMenu {
+								placeholder = "Select warning to remove..."
+								maximumChoices = 1
+								userWarns.mapIndexed { i, iii ->
+								    option(label = "Warning ${i + 1}", iii.id.toString()) {
+									description = "Reason: ${iii.reason}"
+								}
+								}
 
-				var userStrikes = WarnCollection().getWarn(targetUser.id, guild!!.id)?.strikes
-				if (userStrikes == 0 || userStrikes == null) {
-					respond {
-						content = "This user does not have any warning strikes!"
-					}
-					return@action
-				}
+								action SelectMenu@{
+									val option = event.interaction.values.firstOrNull()
+									if (option == null) {
+										respond { content = "You did not select an option!" }
+										return@SelectMenu
+									}
 
-				WarnCollection().setWarn(targetUser.id, guild!!.id, true)
-				userStrikes = WarnCollection().getWarn(targetUser.id, guild!!.id)?.strikes
+									val selectedWarn = userWarns.find { option.toLong() == it.id }
+									if (selectedWarn == null) {
+										respond { content = "You did not select a valid option!" }
+										return@SelectMenu
+									}
 
-				respond {
-					content = "Removed strike from user"
-				}
+									WarnCollection().removeWarn(selectedWarn.userId, selectedWarn.guildId, selectedWarn.id)
+									val userStrikes = WarnCollection().getWarns(targetUser.id, guild!!.id).count()
 
-				var dm: Message? = null
-				if (arguments.dm) {
-					dm = targetUser.dm {
-						embed {
-							title = "Warn strike removal in ${guild?.fetchGuild()?.name}"
-							description = "You have had a warn strike removed. You now have $userStrikes strikes."
-							color = DISCORD_GREEN
+									respond {
+										content = "Removed warning from user"
+									}
+
+									var dm: Message? = null
+									if (arguments.dm) {
+										dm = targetUser.dm {
+											embed {
+												title = "Warning removal in ${guild?.fetchGuild()?.name}"
+												description = "You have had a warning removed. You now have $userStrikes strikes."
+												color = DISCORD_GREEN
+											}
+										}
+									}
+
+									val dmResult = getDmResult(arguments.dm, dm)
+
+									val actionLog =
+										getLoggingChannelWithPerms(ConfigOptions.ACTION_LOG, this.getGuild()!!) ?: return@SelectMenu
+									actionLog.createEmbed {
+										title = "Warning Removal"
+										color = DISCORD_GREEN
+										timestamp = Clock.System.now()
+										baseModerationEmbed(null, targetUser, user)
+										dmNotificationStatusEmbedField(dmResult)
+										field {
+											name = "Total Strikes:"
+											value = userStrikes.toString()
+											inline = false
+										}
+									}
+
+									if (config.publicLogging != null && config.publicLogging == true) {
+										channel.createEmbed {
+											title = "Warning Removal"
+											description = "${arguments.userArgument.mention} had a warning removed by a moderator."
+											color = DISCORD_GREEN
+										}
+									}
+								}
+							}
 						}
 					}
+					return@action
 				}
+			}
 
-				val dmResult = getDmResult(arguments.dm, dm)
+			publicSubCommand(::WarnListArgs) {
+				name = "list"
+				description = "List warnings for a given user"
 
-				val actionLog = getLoggingChannelWithPerms(ConfigOptions.ACTION_LOG, this.getGuild()!!) ?: return@action
-				actionLog.createEmbed {
-					title = "Warning Removal"
-					color = DISCORD_GREEN
-					timestamp = Clock.System.now()
-					baseModerationEmbed(null, targetUser, user)
-					dmNotificationStatusEmbedField(dmResult)
-					field {
-						name = "Total Strikes:"
-						value = userStrikes.toString()
-						inline = false
+				action {
+					val targetUser = guild?.getMemberOrNull(arguments.userArgument.id) ?: run {
+						respond {
+							content = "I was unable to find the member in this guild! Please try again!"
+						}
+						return@action
 					}
-				}
+					val userWarns = WarnCollection().getWarns(targetUser.id, guild!!.id)
 
-				if (config.publicLogging != null && config.publicLogging == true) {
-					channel.createEmbed {
-						title = "Warning Removal"
-						description = "${arguments.userArgument.mention} had a warn strike removed by a moderator."
-						color = DISCORD_GREEN
+					if (userWarns.isEmpty()) {
+						respond {
+							content = "This user has no warnings."
+						}
+						return@action
 					}
+
+					respond {
+						embed {
+							color = DISCORD_RED
+							title = "Warnings for ${targetUser.username}"
+							userWarns.mapIndexed { i, iii ->
+							    field {
+								name = "Warning ${i + 1}"
+								value = "Created at ${iii.datetime.toDiscord(TimestampType.LongDateTime)} " +
+										"(${iii.datetime.toDiscord(TimestampType.RelativeTime)})\n" +
+										"Warning ID: `${iii.id}`\n" +
+										"Reason: ${iii.reason}"
+							}
+							}
+							}
+					}
+					return@action
 				}
 			}
 		}
@@ -1268,6 +1402,22 @@ class ModerationCommands : Extension() {
 			name = "dm"
 			description = "Whether to send a direct message to the user about the warning"
 			defaultValue = true
+		}
+	}
+
+	inner class WarnListArgs : Arguments() {
+		/** The requested user to display warnings of. */
+		val userArgument by user {
+			name = "user"
+			description = "Person to display warns of"
+		}
+	}
+
+	inner class TimeoutListArgs : Arguments() {
+		/** The requested user to display timeouts of. */
+		val userArgument by user {
+			name = "user"
+			description = "Person to display timeouts of"
 		}
 	}
 }

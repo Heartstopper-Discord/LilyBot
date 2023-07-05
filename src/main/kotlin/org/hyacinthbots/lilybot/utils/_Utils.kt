@@ -20,6 +20,7 @@ import mu.KotlinLogging
 import org.hyacinthbots.discordmoderationactions.enums.DmResult
 import org.hyacinthbots.lilybot.database.Database
 import org.hyacinthbots.lilybot.database.collections.ConfigMetaCollection
+import org.hyacinthbots.lilybot.database.collections.ForumRequestCollection
 import org.hyacinthbots.lilybot.database.collections.GalleryChannelCollection
 import org.hyacinthbots.lilybot.database.collections.GithubCollection
 import org.hyacinthbots.lilybot.database.collections.GuildLeaveTimeCollection
@@ -32,7 +33,9 @@ import org.hyacinthbots.lilybot.database.collections.RoleMenuCollection
 import org.hyacinthbots.lilybot.database.collections.RoleSubscriptionCollection
 import org.hyacinthbots.lilybot.database.collections.StatusCollection
 import org.hyacinthbots.lilybot.database.collections.TagsCollection
+import org.hyacinthbots.lilybot.database.collections.TaskCollection
 import org.hyacinthbots.lilybot.database.collections.ThreadsCollection
+import org.hyacinthbots.lilybot.database.collections.TimeoutCollection
 import org.hyacinthbots.lilybot.database.collections.UptimeCollection
 import org.hyacinthbots.lilybot.database.collections.UtilityConfigCollection
 import org.hyacinthbots.lilybot.database.collections.WarnCollection
@@ -265,6 +268,9 @@ suspend inline fun ExtensibleBotBuilder.database(migrate: Boolean) {
 				single { UptimeCollection() } bind UptimeCollection::class
 				single { UtilityConfigCollection() } bind UtilityConfigCollection::class
 				single { WarnCollection() } bind WarnCollection::class
+				single { TimeoutCollection() } bind TimeoutCollection::class
+				single { TaskCollection() } bind TaskCollection::class
+				single { ForumRequestCollection() } bind ForumRequestCollection::class
 				single { WelcomeChannelCollection() } bind WelcomeChannelCollection::class
 			}
 

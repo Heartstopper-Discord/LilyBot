@@ -443,6 +443,33 @@ class Config : Extension() {
 							}
 						}
 
+						field {
+							name = "Welcome Role"
+							value = if (arguments.welcomeRole != null) {
+								"${arguments.welcomeRole!!.mention} ${arguments.welcomeRole!!.data.name}"
+							} else {
+								"Disabled"
+							}
+						}
+
+						field {
+							name = "Welcome Role Delay"
+							value = if (arguments.welcomeRoleDelay != null) {
+								"${arguments.welcomeRoleDelay.interval()}"
+							} else {
+								"Disabled"
+							}
+						}
+
+						field {
+							name = "Forum Channel"
+							value = if (arguments.forum != null) {
+								"${arguments.forum!!.mention} ${arguments.forum!!.data.name.value}"
+							} else {
+								"Disabled"
+							}
+						}
+
 						footer {
 							text = "Configured by ${user.asUserOrNull()?.username}"
 							icon = user.asUserOrNull()?.avatar?.cdnUrl?.toUrl()
@@ -458,7 +485,10 @@ class Config : Extension() {
 					UtilityConfigCollection().setConfig(
 						UtilityConfigData(
 							guild!!.id,
-							arguments.utilityLogChannel?.id
+							arguments.utilityLogChannel?.id,
+							arguments.welcomeRole?.id,
+							arguments.welcomeRoleDelay,
+							arguments.forum?.id
 						)
 					)
 
@@ -710,6 +740,31 @@ class Config : Extension() {
 												config.utilityLogChannel?.let { guild!!.getChannelOrNull(it)?.mention } ?: "None"
 											} ${config.utilityLogChannel?.let { guild!!.getChannelOrNull(it)?.name } ?: ""}"
 									}
+
+									field {
+										name = "Welcome Role"
+										value =
+											"${
+												config.welcomeRole?.let { guild!!.getRoleOrNull(it)?.mention } ?: "None"
+											} ${config.welcomeRole?.let { guild!!.getRoleOrNull(it)?.name } ?: ""}"
+									}
+
+									field {
+										name = "Welcome Role Delay"
+										value = if (config.welcomeRoleDelay != null) {
+											"${config.welcomeRoleDelay.interval()}"
+										} else {
+											"Disabled"
+										}
+									}
+
+									field {
+										name = "Forum Channel"
+										value =
+											"${
+												config.forumId?.let { guild!!.getChannelOrNull(it)?.mention } ?: "None"
+											} ${config.forumId?.let { guild!!.getChannelOrNull(it)?.name } ?: ""}"
+									}
 									timestamp = Clock.System.now()
 								}
 							}
@@ -794,6 +849,21 @@ class Config : Extension() {
 		val utilityLogChannel by optionalChannel {
 			name = "utility-log"
 			description = "The channel to log various utility actions too."
+		}
+
+		val welcomeRole by optionalRole {
+			name = "welcome-role"
+			description = "The role that a user is assigned when they join the server."
+		}
+
+		val welcomeRoleDelay by coalescingOptionalDuration {
+			name = "welcome-role-delay"
+			description = "How long a user should be in the server before getting the welcome role."
+		}
+
+		val forum by optionalChannel {
+			name = "forum-channel"
+			description = "The primary forum channel"
 		}
 	}
 

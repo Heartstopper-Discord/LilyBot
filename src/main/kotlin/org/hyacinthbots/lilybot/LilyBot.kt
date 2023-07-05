@@ -27,6 +27,7 @@ import org.hyacinthbots.lilybot.extensions.events.ModThreadInviting
 import org.hyacinthbots.lilybot.extensions.moderation.LockingCommands
 import org.hyacinthbots.lilybot.extensions.moderation.ModerationCommands
 import org.hyacinthbots.lilybot.extensions.moderation.Report
+import org.hyacinthbots.lilybot.extensions.util.ForumRequests
 import org.hyacinthbots.lilybot.extensions.util.GalleryChannel
 import org.hyacinthbots.lilybot.extensions.util.Github
 import org.hyacinthbots.lilybot.extensions.util.GuildAnnouncements
@@ -39,6 +40,7 @@ import org.hyacinthbots.lilybot.extensions.util.RoleMenu
 import org.hyacinthbots.lilybot.extensions.util.StartupHooks
 import org.hyacinthbots.lilybot.extensions.util.StatusPing
 import org.hyacinthbots.lilybot.extensions.util.Tags
+import org.hyacinthbots.lilybot.extensions.util.Tasks
 import org.hyacinthbots.lilybot.extensions.util.ThreadControl
 import org.hyacinthbots.lilybot.utils.BOT_TOKEN
 import org.hyacinthbots.lilybot.utils.ENVIRONMENT
@@ -57,6 +59,7 @@ private val gitHubLogger = KotlinLogging.logger("GitHub Logger")
 
 val docFile = Path("./docs/commands.md")
 
+@OptIn(PrivilegedIntent::class)
 suspend fun main() {
 	val bot = ExtensibleBot(BOT_TOKEN) {
 		database(true)
@@ -91,6 +94,8 @@ suspend fun main() {
 			add(::NewsChannelPublishing)
 			add(::PublicUtilities)
 			add(::Reminders)
+			add(::Tasks)
+			add(::ForumRequests)
 			add(::Report)
 			add(::RoleMenu)
 			add(::StartupHooks)

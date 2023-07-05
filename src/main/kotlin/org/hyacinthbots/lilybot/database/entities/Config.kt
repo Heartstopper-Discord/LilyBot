@@ -88,5 +88,8 @@ data class UtilityConfigDataOld(
 @Serializable
 data class UtilityConfigData(
 	val guildId: Snowflake,
-	val utilityLogChannel: Snowflake?
+	val utilityLogChannel: Snowflake?,
+	val welcomeRole: Snowflake?,
+	val welcomeRoleDelay: DateTimePeriod?,
+	val forumId: Snowflake?
 )

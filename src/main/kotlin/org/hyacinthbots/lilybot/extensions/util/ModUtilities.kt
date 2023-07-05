@@ -45,6 +45,7 @@ import dev.kord.rest.request.KtorRequestException
 import kotlinx.coroutines.flow.toList
 import kotlinx.datetime.Clock
 import org.hyacinthbots.lilybot.database.collections.AutoThreadingCollection
+import org.hyacinthbots.lilybot.database.collections.ForumRequestCollection
 import org.hyacinthbots.lilybot.database.collections.GalleryChannelCollection
 import org.hyacinthbots.lilybot.database.collections.GithubCollection
 import org.hyacinthbots.lilybot.database.collections.LoggingConfigCollection
@@ -55,7 +56,9 @@ import org.hyacinthbots.lilybot.database.collections.RoleMenuCollection
 import org.hyacinthbots.lilybot.database.collections.RoleSubscriptionCollection
 import org.hyacinthbots.lilybot.database.collections.StatusCollection
 import org.hyacinthbots.lilybot.database.collections.TagsCollection
+import org.hyacinthbots.lilybot.database.collections.TaskCollection
 import org.hyacinthbots.lilybot.database.collections.ThreadsCollection
+import org.hyacinthbots.lilybot.database.collections.TimeoutCollection
 import org.hyacinthbots.lilybot.database.collections.UtilityConfigCollection
 import org.hyacinthbots.lilybot.database.collections.WarnCollection
 import org.hyacinthbots.lilybot.database.collections.WelcomeChannelCollection
@@ -81,6 +84,78 @@ class ModUtilities : Extension() {
 
 	override suspend fun setup() {
 		presenceTask = presenceScheduler.schedule(15.minutes, repeat = true, callback = ::updateDefaultPresence)
+
+		/*
+		ephemeralSlashCommand(::SayEmbedArgs) {
+			name = "say-embed"
+			description = "Define an embed for Lily to send using JSON from https://embed.dan.onl/"
+
+			requirePermission(Permission.ModerateMembers)
+
+			check {
+				anyGuild()
+				hasPermission(Permission.ModerateMembers)
+				requireBotPermissions(Permission.SendMessages, Permission.EmbedLinks)
+				botHasChannelPerms(Permissions(Permission.SendMessages, Permission.EmbedLinks))
+			}
+
+			action {
+				val targetChannel: GuildMessageChannel = if (arguments.channel != null) {
+					guild!!.getChannelOfOrNull(arguments.channel!!.id) ?: return@action
+				} else {
+					channel.asChannelOfOrNull() ?: return@action
+				}
+				val createdMessage: Message
+
+				try {
+					createdMessage = targetChannel.createEmbed {
+						color = arguments.color
+						description = arguments.message
+						if (arguments.timestamp) {
+							timestamp = Clock.System.now()
+						}
+					}
+				} catch (e: KtorRequestException) {
+					respond { content = "Lily does not have permission to send messages in this channel." }
+					return@action
+				}
+
+				respond { content = "Message sent." }
+
+				val utilityLog =
+					getLoggingChannelWithPerms(ConfigOptions.UTILITY_LOG, this.getGuild()!!) ?: return@action
+				utilityLog.createMessage {
+					embed {
+						title = "Say Embed command used"
+						field {
+							name = "Channel:"
+							value = targetChannel.mention
+							inline = true
+						}
+
+						footer {
+							text = user.asUserOrNull()?.username ?: "Unable to get user username"
+							icon = user.asUserOrNull()?.avatar?.cdnUrl?.toUrl()
+						}
+						timestamp = Clock.System.now()
+						color = arguments.color
+						field {
+							name = "Color:"
+							value = arguments.color.toString()
+							inline = true
+						}
+
+					}
+					components {
+						linkButton {
+							label = "Jump to message"
+							url = createdMessage.getJumpUrl()
+						}
+					}
+				}
+			}
+		}
+		 */
 
 		/**
 		 * Say Command
@@ -166,6 +241,47 @@ class ModUtilities : Extension() {
 							url = createdMessage.getJumpUrl()
 						}
 					}
+				}
+			}
+		}
+
+		ephemeralSlashCommand(::GetEmbedRawArgs) {
+			name = "get-raw"
+			description = "Returns the raw data within an embed"
+
+			requirePermission(Permission.ModerateMembers)
+
+			check {
+				anyGuild()
+				hasPermission(Permission.ModerateMembers)
+				requireBotPermissions(Permission.SendMessages, Permission.EmbedLinks)
+			}
+
+			action {
+				val channelOfMessage = if (arguments.channelOfMessage != null) {
+					guild!!.getChannelOfOrNull<GuildMessageChannel>(arguments.channelOfMessage!!.id)
+				} else {
+					channel
+				}
+				val message = channelOfMessage?.getMessageOrNull(arguments.messageId)
+
+				if (message == null) {
+					respond {
+						content = "I was unable to get the target message! Please check the message exists"
+					}
+					return@action
+				}
+
+				val originalContent = message.content
+				// The messages that contains the embed that is going to be edited. If the message has no embed, or
+				// it's not by LilyBot, it returns
+				if (message.embeds.isEmpty()) {
+					respond { content = "```$originalContent```" }
+					return@action
+				} else {
+					val oldContent = message.embeds[0].description
+					respond { content = "```$oldContent```" }
+					return@action
 				}
 			}
 		}
@@ -482,6 +598,9 @@ class ModUtilities : Extension() {
 								UtilityConfigCollection().clearConfig(guild!!.id)
 								WarnCollection().clearWarns(guild!!.id)
 								WelcomeChannelCollection().removeWelcomeChannelsForGuild(guild!!.id, kord)
+								TimeoutCollection().clearTimeouts(guild!!.id)
+								TaskCollection().clearTasks(guild!!.id)
+								ForumRequestCollection().clearForumRequests(guild!!.id)
 							}
 						}
 
@@ -542,6 +661,20 @@ class ModUtilities : Extension() {
 			description = "The color of the embed. Can be either a hex code or one of Discord's supported colors. " +
 					"Embeds only"
 			defaultValue = DISCORD_BLURPLE
+		}
+	}
+
+	inner class GetEmbedRawArgs : Arguments() {
+		/** The message the user wishes to send. */
+		val messageId by snowflake {
+			name = "message-id"
+			description = "The ID of the message you'd like to get the raw data of"
+		}
+
+		/** The channel the embed was originally sent in. */
+		val channelOfMessage by optionalChannel {
+			name = "channel-of-message"
+			description = "The channel of the message"
 		}
 	}
 

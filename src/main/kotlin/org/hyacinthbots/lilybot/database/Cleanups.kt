@@ -9,6 +9,7 @@ import kotlinx.datetime.Clock
 import mu.KotlinLogging
 import org.hyacinthbots.lilybot.database.Cleanups.cleanupGuildData
 import org.hyacinthbots.lilybot.database.Cleanups.cleanupThreadData
+import org.hyacinthbots.lilybot.database.collections.ForumRequestCollection
 import org.hyacinthbots.lilybot.database.collections.GithubCollection
 import org.hyacinthbots.lilybot.database.collections.LoggingConfigCollection
 import org.hyacinthbots.lilybot.database.collections.ModerationConfigCollection
@@ -17,7 +18,9 @@ import org.hyacinthbots.lilybot.database.collections.ReminderCollection
 import org.hyacinthbots.lilybot.database.collections.RoleMenuCollection
 import org.hyacinthbots.lilybot.database.collections.RoleSubscriptionCollection
 import org.hyacinthbots.lilybot.database.collections.TagsCollection
+import org.hyacinthbots.lilybot.database.collections.TaskCollection
 import org.hyacinthbots.lilybot.database.collections.ThreadsCollection
+import org.hyacinthbots.lilybot.database.collections.TimeoutCollection
 import org.hyacinthbots.lilybot.database.collections.UtilityConfigCollection
 import org.hyacinthbots.lilybot.database.collections.WarnCollection
 import org.hyacinthbots.lilybot.database.collections.WelcomeChannelCollection
@@ -74,6 +77,9 @@ object Cleanups : KordExKoinComponent {
 				ThreadsCollection().removeGuildThreads(it.guildId)
 				UtilityConfigCollection().clearConfig(it.guildId)
 				WarnCollection().clearWarns(it.guildId)
+				TimeoutCollection().clearTimeouts(it.guildId)
+				TaskCollection().clearTasks(it.guildId)
+				ForumRequestCollection().clearForumRequests(it.guildId)
 				WelcomeChannelCollection().removeWelcomeChannelsForGuild(it.guildId, kord)
 				guildLeaveTimeCollection.deleteOne(GuildLeaveTimeData::guildId eq it.guildId)
 				deletedGuildData += 1 // Increment the counter for logging

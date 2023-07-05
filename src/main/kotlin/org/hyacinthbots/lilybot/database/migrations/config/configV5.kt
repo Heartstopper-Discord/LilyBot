@@ -12,7 +12,7 @@ suspend fun configV5(db: CoroutineDatabase) {
 	val newConfigs = mutableListOf<UtilityConfigData>()
 
 	oldConfigs.forEach {
-		newConfigs.add(UtilityConfigData(it.guildId, it.utilityLogChannel))
+		newConfigs.add(UtilityConfigData(it.guildId, it.utilityLogChannel, null, null, null))
 	}
 
 	db.dropCollection("utilityConfigData")
