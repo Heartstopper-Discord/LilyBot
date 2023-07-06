@@ -276,11 +276,19 @@ class ModUtilities : Extension() {
 				// The messages that contains the embed that is going to be edited. If the message has no embed, or
 				// it's not by LilyBot, it returns
 				if (message.embeds.isEmpty()) {
-					respond { content = "```$originalContent```" }
+					respond {
+						embed {
+							description = "```$originalContent```"
+						}
+					 }
 					return@action
 				} else {
 					val oldContent = message.embeds[0].description
-					respond { content = "```$oldContent```" }
+					respond {
+						embed {
+							description = "```$oldContent```"
+						}
+					}
 					return@action
 				}
 			}

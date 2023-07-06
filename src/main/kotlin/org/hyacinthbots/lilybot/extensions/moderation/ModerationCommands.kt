@@ -1184,13 +1184,48 @@ class ModerationCommands : Extension() {
 										"(${iii.datetime.toDiscord(TimestampType.RelativeTime)})\n" +
 										"Warning ID: `${iii.id}`\n" +
 										"Reason: ${iii.reason}"
+								}
 							}
-							}
-							}
+						}
 					}
 					return@action
 				}
 			}
+/*
+			publicSubCommand(::WarnLoadArgs) {
+				name = "load"
+				description = "Loads warnings from JSON"
+				requirePermission(Permission.Administrator)
+
+				action {
+					val obj = Json.decodeFromString(JsonModel.serializer(), arguments.jsonBlob)
+					for (warn in obj.data) {
+						WarnCollection().loadWarn(warn.userId, guild!!.id, warn.reason, warn.date)
+					}
+					//WarnCollection().setWarn()
+
+					respond {
+						content = "Done!"
+					}
+					return@action
+				}
+			}
+
+			publicSubCommand {
+				name = "clear"
+				description = "Clears all guild warnings"
+				requirePermission(Permission.Administrator)
+
+				action {
+					WarnCollection().clearWarns(guild!!.id)
+
+					respond {
+						content = "Done!"
+					}
+					return@action
+				}
+			}
+ */
 		}
 	}
 
@@ -1413,6 +1448,21 @@ class ModerationCommands : Extension() {
 		}
 	}
 
+/*
+	inner class WarnLoadArgs : Arguments() {
+		/** The requested user to display warnings of. */
+		val jsonBlob by string {
+			name = "json"
+			description = "JSON list of userid/date/reasons"
+		}
+	}
+
+	@Serializable
+	data class JsonModel(val data: List<ChildJsonModel>)
+
+	@Serializable
+	data class ChildJsonModel(val userId: Snowflake, val reason: String, val date: Instant)
+*/
 	inner class TimeoutListArgs : Arguments() {
 		/** The requested user to display timeouts of. */
 		val userArgument by user {

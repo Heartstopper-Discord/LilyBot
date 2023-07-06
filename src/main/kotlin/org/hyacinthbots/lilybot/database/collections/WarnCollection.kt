@@ -49,6 +49,18 @@ class WarnCollection : KordExKoinComponent {
 			)
 		)
 
+	/*
+	suspend fun loadWarn(inputUserId: Snowflake, inputGuildId: Snowflake, reason: String?, time: Instant) =
+		collection.insertOne(
+			WarnData(
+				(getWarns(inputUserId, inputGuildId).maxByOrNull { it.id }?.id ?: 0) + 1,
+				inputUserId,
+				inputGuildId,
+				reason,
+				time
+			)
+		)
+*/
 	suspend fun removeWarn(inputUserId: Snowflake, inputGuildId: Snowflake, id: Long) =
 		collection.deleteOne(WarnData::userId eq inputUserId, WarnData::guildId eq inputGuildId, WarnData::id eq id)
 

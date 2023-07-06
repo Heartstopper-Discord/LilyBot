@@ -37,6 +37,7 @@ class ForumRequests : Extension() {
 
 			action {
 				val utilConfig = UtilityConfigCollection().getConfig(guild!!.id)
+
 				if (utilConfig?.forumId == null) {
 					return@action
 				}
@@ -89,6 +90,7 @@ class ForumRequests : Extension() {
 							}
 						}
 					}
+					return@action
 				} catch (e: KtorRequestException) {
 					respond {
 						content = "Error sending message to moderators. Please ask the moderators to check" +
@@ -167,6 +169,8 @@ class ForumRequests : Extension() {
 							}
 						}
 						ForumRequestCollection().removeForumRequest(req.userId, req.guildId, req.id)
+						respond { content = "Forum request approved." }
+						return@action
 					} catch (e: KtorRequestException) {
 						return@action
 					}
@@ -207,6 +211,12 @@ class ForumRequests : Extension() {
 								}
 							}
 						}
+
+						ForumRequestCollection().removeForumRequest(req.userId, req.guildId, req.id)
+
+						respond { content = "Forum request denied." }
+
+						return@action
 					} catch (e: KtorRequestException) {
 						respond { content = "User could not be DMed." }
 						return@action
