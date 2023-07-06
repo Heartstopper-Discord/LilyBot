@@ -28,7 +28,7 @@ class Tasks : Extension() {
 	private lateinit var taskTask: Task
 
 	override suspend fun setup() {
-		taskTask = taskScheduler.schedule(1, repeat = true, callback = ::performTasks)
+		taskTask = taskScheduler.schedule(30, repeat = true, callback = ::performTasks)
 
 		event<MemberJoinEvent> {
 			check {
