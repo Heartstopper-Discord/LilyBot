@@ -13,7 +13,6 @@ import com.kotlindiscord.kord.extensions.commands.converters.impl.defaultingColo
 import com.kotlindiscord.kord.extensions.commands.converters.impl.optionalBoolean
 import com.kotlindiscord.kord.extensions.commands.converters.impl.optionalChannel
 import com.kotlindiscord.kord.extensions.commands.converters.impl.optionalColour
-import com.kotlindiscord.kord.extensions.commands.converters.impl.optionalString
 import com.kotlindiscord.kord.extensions.commands.converters.impl.snowflake
 import com.kotlindiscord.kord.extensions.commands.converters.impl.string
 import com.kotlindiscord.kord.extensions.components.components
@@ -22,10 +21,16 @@ import com.kotlindiscord.kord.extensions.components.forms.ModalForm
 import com.kotlindiscord.kord.extensions.components.linkButton
 import com.kotlindiscord.kord.extensions.extensions.Extension
 import com.kotlindiscord.kord.extensions.extensions.ephemeralSlashCommand
+import com.kotlindiscord.kord.extensions.modules.unsafe.annotations.UnsafeAPI
+import com.kotlindiscord.kord.extensions.modules.unsafe.extensions.unsafeSlashCommand
+import com.kotlindiscord.kord.extensions.modules.unsafe.types.InitialSlashCommandResponse
+import com.kotlindiscord.kord.extensions.modules.unsafe.types.ackEphemeral
+import com.kotlindiscord.kord.extensions.modules.unsafe.types.respondEphemeral
 import com.kotlindiscord.kord.extensions.types.respond
 import com.kotlindiscord.kord.extensions.utils.getJumpUrl
 import com.kotlindiscord.kord.extensions.utils.scheduling.Scheduler
 import com.kotlindiscord.kord.extensions.utils.scheduling.Task
+import dev.kord.common.Color
 import dev.kord.common.entity.ButtonStyle
 import dev.kord.common.entity.Permission
 import dev.kord.common.entity.Permissions
@@ -36,6 +41,7 @@ import dev.kord.core.behavior.channel.createMessage
 import dev.kord.core.behavior.edit
 import dev.kord.core.behavior.getChannelOfOrNull
 import dev.kord.core.behavior.interaction.followup.edit
+import dev.kord.core.behavior.interaction.modal
 import dev.kord.core.entity.Message
 import dev.kord.core.entity.channel.GuildMessageChannel
 import dev.kord.core.entity.interaction.followup.EphemeralFollowupMessage
@@ -85,86 +91,16 @@ class ModUtilities : Extension() {
 	override suspend fun setup() {
 		presenceTask = presenceScheduler.schedule(15.minutes, repeat = true, callback = ::updateDefaultPresence)
 
-		/*
-		ephemeralSlashCommand(::SayEmbedArgs) {
-			name = "say-embed"
-			description = "Define an embed for Lily to send using JSON from https://embed.dan.onl/"
-
-			requirePermission(Permission.ModerateMembers)
-
-			check {
-				anyGuild()
-				hasPermission(Permission.ModerateMembers)
-				requireBotPermissions(Permission.SendMessages, Permission.EmbedLinks)
-				botHasChannelPerms(Permissions(Permission.SendMessages, Permission.EmbedLinks))
-			}
-
-			action {
-				val targetChannel: GuildMessageChannel = if (arguments.channel != null) {
-					guild!!.getChannelOfOrNull(arguments.channel!!.id) ?: return@action
-				} else {
-					channel.asChannelOfOrNull() ?: return@action
-				}
-				val createdMessage: Message
-
-				try {
-					createdMessage = targetChannel.createEmbed {
-						color = arguments.color
-						description = arguments.message
-						if (arguments.timestamp) {
-							timestamp = Clock.System.now()
-						}
-					}
-				} catch (e: KtorRequestException) {
-					respond { content = "Lily does not have permission to send messages in this channel." }
-					return@action
-				}
-
-				respond { content = "Message sent." }
-
-				val utilityLog =
-					getLoggingChannelWithPerms(ConfigOptions.UTILITY_LOG, this.getGuild()!!) ?: return@action
-				utilityLog.createMessage {
-					embed {
-						title = "Say Embed command used"
-						field {
-							name = "Channel:"
-							value = targetChannel.mention
-							inline = true
-						}
-
-						footer {
-							text = user.asUserOrNull()?.username ?: "Unable to get user username"
-							icon = user.asUserOrNull()?.avatar?.cdnUrl?.toUrl()
-						}
-						timestamp = Clock.System.now()
-						color = arguments.color
-						field {
-							name = "Color:"
-							value = arguments.color.toString()
-							inline = true
-						}
-
-					}
-					components {
-						linkButton {
-							label = "Jump to message"
-							url = createdMessage.getJumpUrl()
-						}
-					}
-				}
-			}
-		}
-		 */
-
 		/**
 		 * Say Command
 		 * @author NoComment1105, tempest15
 		 * @since 2.0
 		 */
-		ephemeralSlashCommand(::SayArgs) {
+		@OptIn(UnsafeAPI::class)
+		unsafeSlashCommand(::SayArgs) {
 			name = "say"
 			description = "Say something through Lily."
+			initialResponse = InitialSlashCommandResponse.None
 
 			requirePermission(Permission.ModerateMembers)
 
@@ -182,33 +118,51 @@ class ModUtilities : Extension() {
 				}
 				val createdMessage: Message
 
+				val modalObj = EditSayModal()
+
+				this@unsafeSlashCommand.componentRegistry.register(modalObj)
+
+				event.interaction.modal(
+					modalObj.title,
+					modalObj.id
+				) {
+					modalObj.applyToBuilder(this, getLocale(), null)
+				}
+
+				modalObj.awaitCompletion { modalSubmitInteraction ->
+					interactionResponse = modalSubmitInteraction?.deferEphemeralMessageUpdate()
+				}
+
+				val messageContent = modalObj.msgInput.value!!
+
 				try {
 					if (arguments.embed) {
 						createdMessage = targetChannel.createEmbed {
 							color = arguments.color
-							description = arguments.message
+							description = messageContent
 							if (arguments.timestamp) {
 								timestamp = Clock.System.now()
 							}
 						}
 					} else {
 						createdMessage = targetChannel.createMessage {
-							content = arguments.message
+							content = messageContent
 						}
 					}
 				} catch (e: KtorRequestException) {
-					respond { content = "Lily does not have permission to send messages in this channel." }
+					ackEphemeral()
+					respondEphemeral { content = "Lily does not have permission to send messages in this channel." }
 					return@action
 				}
 
-				respond { content = "Message sent." }
+				respondEphemeral { content = "Message sent." }
 
 				val utilityLog =
 					getLoggingChannelWithPerms(ConfigOptions.UTILITY_LOG, this.getGuild()!!) ?: return@action
 				utilityLog.createMessage {
 					embed {
 						title = "Say command used"
-						description = "```${arguments.message}```"
+						description = "```$messageContent```"
 						field {
 							name = "Channel:"
 							value = targetChannel.mention
@@ -280,7 +234,7 @@ class ModUtilities : Extension() {
 						embed {
 							description = "```$originalContent```"
 						}
-					 }
+					}
 					return@action
 				} else {
 					val oldContent = message.embeds[0].description
@@ -294,14 +248,35 @@ class ModUtilities : Extension() {
 			}
 		}
 
+		ephemeralSlashCommand(::SpeakArgs) {
+			name = "speak"
+			description = "Says what you say through the bot"
+
+			requirePermission(Permission.ModerateMembers)
+
+			check {
+				anyGuild()
+				hasPermission(Permission.ModerateMembers)
+				requireBotPermissions(Permission.SendMessages, Permission.EmbedLinks)
+			}
+
+			action {
+				channel.createMessage { content = arguments.message }
+				respond { content = "Sent!" }
+				return@action
+			}
+		}
+
 		/**
 		 * Message editing command
 		 *
 		 * @since 3.3.0
 		 */
-		ephemeralSlashCommand(::SayEditArgs) {
+		@OptIn(UnsafeAPI::class)
+		unsafeSlashCommand(::SayEditArgs) {
 			name = "edit-say"
 			description = "Edit a message created by /say"
+			initialResponse = InitialSlashCommandResponse.None
 
 			requirePermission(Permission.ModerateMembers)
 
@@ -322,131 +297,109 @@ class ModUtilities : Extension() {
 				val message = channelOfMessage?.getMessageOrNull(arguments.messageToEdit)
 
 				if (message == null) {
-					respond {
+					ackEphemeral()
+					respondEphemeral {
 						content = "I was unable to get the target message! Please check the message exists"
 					}
 					return@action
 				}
 
-				val originalContent = message.content
-				// The messages that contains the embed that is going to be edited. If the message has no embed, or
+				var oldContent: String? = message.content
+				var oldColor: Color? = null
+
+				if (!message.embeds.isEmpty()) {
+					oldContent = message.embeds[0].description
+					oldColor = message.embeds[0].color
+				}
+				// The message that contains the text that is going to be edited. If the message has no embed, or
 				// it's not by LilyBot, it returns
+				if (message.author!!.id != this@unsafeSlashCommand.kord.selfId) {
+					ackEphemeral()
+					respondEphemeral { content = "I did not send this message, I cannot edit this!" }
+					return@action
+				}
+
+				val modalObj = EditSayModal()
+
+				modalObj.msgInput.initialValue = oldContent
+
+				this@unsafeSlashCommand.componentRegistry.register(modalObj)
+
+				event.interaction.modal(
+					modalObj.title,
+					modalObj.id
+				) {
+					modalObj.applyToBuilder(this, getLocale(), null)
+				}
+
+				modalObj.awaitCompletion { modalSubmitInteraction ->
+					interactionResponse = modalSubmitInteraction?.deferEphemeralMessageUpdate()
+				}
+
+				val newContent = modalObj.msgInput.value!!
+
 				if (message.embeds.isEmpty()) {
-					if (message.author!!.id != this@ephemeralSlashCommand.kord.selfId) {
-						respond { content = "I did not send this message, I cannot edit this!" }
-						return@action
-					} else if (arguments.newContent == null) {
-						respond { content = "Please specify a new message content" }
-						return@action
-					} else if (arguments.newContent != null && arguments.newContent!!.length > 1024) {
-						respond {
-							content =
-								"Maximum embed length reached! Your embed character length cannot be more than 1024 " +
-										"characters, due to Discord limitations"
-						}
-						return@action
-					}
-
-					message.edit { content = arguments.newContent }
-
-					respond { content = "Message edited" }
-
-					val utilityLog = getLoggingChannelWithPerms(ConfigOptions.UTILITY_LOG, this.getGuild()!!)
-						?: return@action
-					utilityLog.createMessage {
-						embed {
-							title = "Say message edited"
-							field {
-								name = "Original Content"
-								value = "```${originalContent.trimmedContents(500)}```"
-							}
-							field {
-								name = "New Content"
-								value = "```${arguments.newContent.trimmedContents(500)}```"
-							}
-							footer {
-								text = "Edited by ${user.asUserOrNull()?.username}"
-								icon = user.asUserOrNull()?.avatar?.cdnUrl?.toUrl()
-							}
-							color = DISCORD_WHITE
-							timestamp = Clock.System.now()
-						}
-						components {
-							linkButton {
-								label = "Jump to message"
-								url = message.getJumpUrl()
-							}
-						}
-					}
+					message.edit { content = newContent }
 				} else {
-					if (message.author!!.id != this@ephemeralSlashCommand.kord.selfId) {
-						respond { content = "I did not send this message, I cannot edit this!" }
-						return@action
-					}
-
-					// The old description and color to the embed. We get it here before we start changing it.
-					val oldContent = message.embeds[0].description
-					val oldColor = message.embeds[0].color
-					val oldTimestamp = message.embeds[0].timestamp
-
 					message.edit {
 						embed {
-							description = arguments.newContent ?: oldContent
-							color = arguments.newColor ?: oldColor
+							description = newContent
+							color = arguments.newColor ?: message.embeds[0].color
 							timestamp = when (arguments.timestamp) {
 								true -> message.timestamp
 								false -> null
-								null -> oldTimestamp
+								null -> message.embeds[0].timestamp
 							}
 						}
 					}
+				}
 
-					respond { content = "Embed updated" }
+				respondEphemeral { content = "Message edited" }
 
-					val utilityLog = getLoggingChannelWithPerms(ConfigOptions.UTILITY_LOG, this.getGuild()!!)
-						?: return@action
-					utilityLog.createMessage {
-						embed {
-							title = "Say message edited"
-							field {
-								name = "Original content"
-								// The old content, if null none
-								value = "```${oldContent ?: "none"}```"
-							}
-							field {
-								name = "New content"
-								// The new content, if null the old content, if null none
-								value = "```${arguments.newContent ?: oldContent ?: "none"}```"
-							}
-							field {
-								name = "Old color"
-								value = oldColor.toString()
-							}
-							field {
-								name = "New color"
-								value =
-									if (arguments.newColor != null) arguments.newColor.toString() else oldColor.toString()
-							}
-							field {
-								name = "Has Timestamp"
-								value = when (arguments.timestamp) {
-									true -> "True"
-									false -> "False"
-									else -> "Original"
-								}
-							}
-							footer {
-								text = "Edited by ${user.asUserOrNull()?.username}"
-								icon = user.asUserOrNull()?.avatar?.cdnUrl?.toUrl()
-							}
-							timestamp = Clock.System.now()
-							color = DISCORD_WHITE
+				val utilityLog = getLoggingChannelWithPerms(ConfigOptions.UTILITY_LOG, this.getGuild()!!)
+					?: return@action
+				utilityLog.createMessage {
+					embed {
+						title = "Say message edited"
+						field {
+							name = "Original Content"
+							value = "```${oldContent.trimmedContents(500)}```"
 						}
-						components {
-							linkButton {
-								label = "Jump to message"
-								url = message.getJumpUrl()
+						field {
+							name = "New Content"
+							value = "```${newContent.trimmedContents(500)}```"
+						}
+						field {
+							name = "Old color"
+							value = oldColor?.toString() ?: "none"
+						}
+						field {
+							name = "New color"
+							value =
+								if (arguments.newColor != null) {
+								    arguments.newColor.toString()
+								} else oldColor?.toString()
+									?: "none"
+						}
+						field {
+							name = "Has Timestamp"
+							value = when (arguments.timestamp) {
+								true -> "True"
+								false -> "False"
+								else -> "Original"
 							}
+						}
+						footer {
+							text = "Edited by ${user.asUserOrNull()?.username}"
+							icon = user.asUserOrNull()?.avatar?.cdnUrl?.toUrl()
+						}
+						color = DISCORD_WHITE
+						timestamp = Clock.System.now()
+					}
+					components {
+						linkButton {
+							label = "Jump to message"
+							url = message.getJumpUrl()
 						}
 					}
 				}
@@ -630,19 +583,6 @@ class ModUtilities : Extension() {
 	}
 
 	inner class SayArgs : Arguments() {
-		/** The message the user wishes to send. */
-		val message by string {
-			name = "message"
-			description = "The text of the message to be sent."
-
-			// Fix newline escape characters
-			mutate {
-				it.replace("\\n", "\n")
-					.replace("\n ", "\n")
-					.replace("\n", "\n")
-			}
-		}
-
 		/** The channel to aim the message at. */
 		val channel by optionalChannel {
 			name = "channel"
@@ -671,7 +611,19 @@ class ModUtilities : Extension() {
 			defaultValue = DISCORD_BLURPLE
 		}
 	}
+	inner class SpeakArgs : Arguments() {
+		val message by string {
+			name = "message"
+			description = "The message being sent."
 
+			// Fix newline escape characters
+			mutate {
+				it.replace("\\n", "\n")
+					.replace("\n ", "\n")
+					.replace("\n", "\n")
+			}
+		}
+	}
 	inner class GetEmbedRawArgs : Arguments() {
 		/** The message the user wishes to send. */
 		val messageId by snowflake {
@@ -691,18 +643,6 @@ class ModUtilities : Extension() {
 		val messageToEdit by snowflake {
 			name = "message-to-edit"
 			description = "The ID of the message you'd like to edit"
-		}
-
-		/** The new content of the embed. */
-		val newContent by optionalString {
-			name = "new-content"
-			description = "The new content of the message"
-
-			mutate {
-				it?.replace("\\n", "\n")
-					?.replace("\n ", "\n")
-					?.replace("\n", "\n")
-			}
 		}
 
 		/** The new color for the embed. */
@@ -738,6 +678,16 @@ class ModUtilities : Extension() {
 		val confirmation = lineText {
 			label = "Confirm Reset"
 			placeholder = "Type 'yes' to confirm"
+			required = true
+		}
+	}
+
+	inner class EditSayModal : ModalForm() {
+		override var title = "/Say Text Editing Modal"
+
+		val msgInput = paragraphText {
+			label = "Say Text"
+			placeholder = "Input the text you'd like"
 			required = true
 		}
 	}

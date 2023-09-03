@@ -20,7 +20,7 @@ class ModThreadInviting : Extension() {
 			check {
 				anyGuild()
 				failIf {
-					event.channel.ownerId == kord.selfId ||
+					/*event.channel.ownerId == kord.selfId ||*/
 							event.channel.member != null
 				}
 			}

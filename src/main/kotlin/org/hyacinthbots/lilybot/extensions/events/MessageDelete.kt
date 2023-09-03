@@ -45,7 +45,7 @@ class MessageDelete : Extension() {
 				anyGuild()
 				requiredConfigs(ConfigOptions.MESSAGE_DELETE_LOGGING_ENABLED, ConfigOptions.MESSAGE_LOG)
 				failIf {
-					event.message?.author?.id == kord.selfId
+					event.message?.author?.id == kord.selfId || event.channel.id.value.toLong() == 1_126_280_165_375_352_842
 				}
 			}
 
@@ -65,7 +65,7 @@ class MessageDelete : Extension() {
 				requiredConfigs(ConfigOptions.MESSAGE_DELETE_LOGGING_ENABLED, ConfigOptions.MESSAGE_LOG)
 				failIf {
 					event.message?.author?.id == kord.selfId ||
-							event.message?.author?.isBot == true
+							event.message?.author?.isBot == true || event.channel.id.value.toLong() == 1_126_280_165_375_352_842
 				}
 			}
 

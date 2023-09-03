@@ -3,20 +3,26 @@ package org.hyacinthbots.lilybot.extensions.util
 import com.kotlindiscord.kord.extensions.checks.anyGuild
 import com.kotlindiscord.kord.extensions.extensions.Extension
 import com.kotlindiscord.kord.extensions.extensions.event
+import com.kotlindiscord.kord.extensions.extensions.publicSlashCommand
+import com.kotlindiscord.kord.extensions.types.respond
 import com.kotlindiscord.kord.extensions.utils.botHasPermissions
 import com.kotlindiscord.kord.extensions.utils.scheduling.Scheduler
 import com.kotlindiscord.kord.extensions.utils.scheduling.Task
 import dev.kord.common.entity.Permission
+import dev.kord.common.entity.Permissions
 import dev.kord.core.behavior.edit
 import dev.kord.core.entity.Guild
 import dev.kord.core.event.guild.MemberJoinEvent
+import dev.kord.rest.builder.message.create.embed
 import dev.kord.rest.request.KtorRequestException
 import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
 import org.hyacinthbots.lilybot.database.collections.TaskCollection
 import org.hyacinthbots.lilybot.database.collections.UtilityConfigCollection
 import org.hyacinthbots.lilybot.database.entities.TaskData
+import org.hyacinthbots.lilybot.utils.botHasChannelPerms
 
 class Tasks : Extension() {
 	override val name = "task"
@@ -26,6 +32,8 @@ class Tasks : Extension() {
 
 	/** The task that will run the [taskScheduler]. */
 	private lateinit var taskTask: Task
+
+	private val endDate = Instant.fromEpochSeconds(1_701_907_200)
 
 	override suspend fun setup() {
 		taskTask = taskScheduler.schedule(30, repeat = true, callback = ::performTasks)
@@ -53,14 +61,32 @@ class Tasks : Extension() {
 				)
 			}
 		}
+
+		publicSlashCommand {
+			name = "countdown"
+			description = "Counting down the days until the Heartstopper Volume 5 release"
+
+			check {
+				requireBotPermissions(Permission.SendMessages)
+				botHasChannelPerms(Permissions(Permission.SendMessages))
+			}
+			action {
+				val diff = endDate - Clock.System.now()
+				val days = diff.inWholeDays
+				val hours = diff.inWholeHours - (days * 24)
+				val minutes = diff.inWholeMinutes - (diff.inWholeHours * 60)
+				val seconds = diff.inWholeSeconds - (diff.inWholeMinutes * 60)
+				respond {
+					embed {
+						title = "$days days left"
+						description = "There are **$days days**, **$hours hours**, **$minutes minutes**, and **$seconds seconds**" +
+								" left until Heartstopper Volume 5 is released at <t:1701907200:F>"
+					}
+				}
+			}
+		}
 	}
 
-	/**
-	 * Checks the database to see if reminders need posting and posts them if necessary.
-	 *
-	 * @author NoComment1105
-	 * @since 4.2.0
-	 */
 	private suspend fun performTasks() {
 		val tasks = TaskCollection().getAllTasks()
 		val dueTasks =
